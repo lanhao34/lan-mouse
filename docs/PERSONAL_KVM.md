@@ -1,0 +1,46 @@
+# Personal KVM development
+
+## Current implementation status
+
+- Base: upstream `69958c625163649b69e27d0a6fb5a3edd596a467`.
+- Merged upstream PR #538 at `6b3c894d0801c88790180402035f1e94e760400b`, preserving authorship. It provides global outgoing key remapping and scroll inversion, with matching modifier-mask and key-release handling. For Windows keyboard -> Mac, the Windows sender must run/configure this implementation. Do not simultaneously apply the existing Mac modifier-swapping helper, or a double swap may cancel the desired behavior.
+- PR #483 is the broader original remapping work. Do not merge both copies of the feature.
+- PR #494 at `21297b089badcbb0e49af6a4819e534a9ca9c2b5` is fetched as `review/edge-position`, NOT merged. Its screen geometry suite was exercised separately (25 tests). It adds negotiated positioned transitions, transition IDs and retry handling. Mac capture and emulation positions are explicitly not implemented in that PR.
+- `input-event::edge_mapping` is a new, tested geometry API: monotonic local calibration anchors, normalized positions, flipped segments, strict validation and out-of-range rejection. It is NOT wired into capture, configuration, protocol, or UI yet. No running application has been replaced.
+
+## Intended user experience
+
+Each computer owns only its local portal definition: monitor, edge, start/end points and optional calibration anchors. The user chooses a peer and matching portal identifier, rather than calculating remote desktop coordinates. A pairing preview shows both portals and verifies orientation.
+
+For a source local position x between a and b, t=(x-a)/(b-a). The destination uses its own c,d to place the pointer at c+t*(d-c). Optional monotonic anchors allow alignment points to correspond exactly. Physical screen dimensions and top/center/bottom or manual alignment generate these local anchors; dimensions must not be guessed from pixels or unreliable EDID alone.
+
+Use logical desktop coordinates at each OS boundary; scale/physical units belong to setup and preview. Keep display identity separate from transient screen index. Resolve coordinates from current monitor geometry, including negative origins, scaling and rotation. When a configured monitor disappears, disable that portal rather than silently substituting another.
+
+The destination positions the cursor just inside its configured edge and creates the return trigger on THAT SAME portal. A short exit/entry hysteresis avoids immediate ping-pong. Internal borders between local displays must not trigger remote transitions.
+
+## Implementation sequence
+
+1. Validate the remapping merge on Mac; build/test Windows separately before deployment. Add per-peer mappings if multiple outgoing systems need different layouts.
+2. Integrate/review PR #494 on a separate checkpoint. Supply Mac crossing positions and Mac destination warps using CoreGraphics. Test existing old-peer fallback, lost/repeated Enter/Ack, two-way return, multi-monitor gaps and scaled displays.
+3. Wire local portal configuration and `EdgeMapping` into both Mac and Windows capture/emulation. Negotiate a portal protocol capability. A transition identifies paired portal, fraction, configuration revision and transition identity. Do not send new messages without peer capability agreement; a peer lacking custom portals must not silently use an unrelated full edge.
+4. Add GTK monitor layout editing: detected monitors, optional physical width/height, alignment presets, draggable endpoints and monotonic anchor points. Preserve existing full-edge behavior as the default for unconfigured peers.
+5. Add a local edit-only overlay: highlight active edge intervals, show endpoint/anchor handles and live peer landing preview. No input interception during normal use. Escape/cancel restores the prior configuration; apply validates overlaps and records one configuration revision atomically.
+
+## Validation and safety
+
+Tests must cover negative origins, unequal DPI/resolutions, flipped ports, gaps/internal edges, exact endpoints, resizing/disconnection, malformed wire fractions, monotonic anchor ordering, bidirectional round trips, lost/duplicate/stale transitions and keys held while changing configuration.
+
+Do not alter live Lan Mouse config, certificates, firewall, TCC permissions or the running helper while developing. Build output alone is not an end-to-end result. Real Mac/Windows crossing and held-key tests require a controlled release and rollback to the current installed applications.
+
+## Local validation (2026-11-08)
+
+Installed Rust 1.91.1 side-by-side (the existing default toolchain is unchanged).
+Use `cargo +1.91.1` in this checkout.
+
+- `cargo +1.91.1 test --no-default-features --locked`: 18 tests passed (existing daemon-only dead-code warning).
+- `cargo +1.91.1 test -p input-event --locked`: 3 new edge-mapping tests passed.
+- PR #494 geometry file, compiled as an isolated Rust test module: 25 tests passed.
+- `cargo +1.91.1 fmt --all --check`: passed.
+- `cargo +1.91.1 clippy --workspace --all-targets --all-features --locked`: passed on this Mac, including GTK compilation/checking.
+- `git diff --check`: passed.
+- No Windows build, physical crossing test, overlay, or live deployment was performed.

@@ -117,3 +117,5 @@ impl Display for Event {
         }
     }
 }
+
+pub mod edge_mapping;

@@ -533,3 +533,10 @@ The following sections detail the emulation and capture backends provided by lan
 - `windows`: Backend for input capture on Windows.
 - `macos`: Backend for input capture on MacOS.
 - `x11`: TODO (not yet supported)
+
+### Local development: calibrated screen edges
+
+This checkout includes an experimental, platform-independent
+`input-event::edge_mapping` geometry API for mapping local edge intervals and
+alignment anchors to a shared 0–1 position. It is not yet connected to screen
+capture, configuration, or the UI. See [development status and design](docs/PERSONAL_KVM.md).
