@@ -355,6 +355,7 @@ pub fn show(app: &adw::Application) {
 
 /// A dedicated edit-only fullscreen surface on the selected physical monitor.
 /// All handle positions are monitor-relative, not scaled preview coordinates.
+#[cfg(not(target_os = "macos"))]
 fn select_on_screen(c: &Controls, parent: &gtk::ApplicationWindow) {
     let draft = match c.draft() {
         Ok(d) => d,
@@ -615,6 +616,77 @@ fn select_on_screen(c: &Controls, parent: &gtk::ApplicationWindow) {
     update();
     window.fullscreen_on_monitor(&monitor);
     window.present();
+}
+
+#[cfg(target_os = "macos")]
+fn select_on_screen(c: &Controls, parent: &gtk::ApplicationWindow) {
+    let d = match c.draft() {
+        Ok(d) => d,
+        Err(e) => {
+            c.result.set_text(e);
+            return;
+        }
+    };
+    let bundled = std::env::current_exe().ok().and_then(|p| {
+        p.parent()
+            .map(|p| p.join("../Helpers/EdgeOverlay.app/Contents/MacOS/edge-overlay"))
+    });
+    let helper = bundled
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| std::path::PathBuf::from(env!("LAN_MOUSE_EDGE_OVERLAY")));
+    let args = vec![
+        d.monitor_rect[0].to_string(),
+        d.monitor_rect[1].to_string(),
+        d.monitor_rect[2].to_string(),
+        d.monitor_rect[3].to_string(),
+        match d.edge {
+            Edge::Left => "left",
+            Edge::Right => "right",
+            Edge::Top => "top",
+            Edge::Bottom => "bottom",
+        }
+        .to_owned(),
+        d.start.to_string(),
+        d.end.to_string(),
+    ];
+    let c = c.clone();
+    let weak = parent.downgrade();
+    parent.set_visible(false);
+    gtk::glib::MainContext::default().spawn_local(async move {
+        let output =
+            gio::spawn_blocking(move || std::process::Command::new(helper).args(args).output())
+                .await;
+        if let Some(parent) = weak.upgrade() {
+            parent.present();
+        }
+        match output {
+            Ok(Ok(o)) if o.status.success() => {
+                let value = serde_json::from_slice::<serde_json::Value>(&o.stdout);
+                match value {
+                    Ok(v) if v.get("cancelled").and_then(|v| v.as_bool()) == Some(true) => {}
+                    Ok(v) => {
+                        if let (Some(a), Some(b)) = (v["start"].as_f64(), v["end"].as_f64()) {
+                            let mut checked = d;
+                            checked.start = a;
+                            checked.end = b;
+                            if checked.validate().is_ok() {
+                                c.start.set_value(a * 100.0);
+                                c.end.set_value(b * 100.0);
+                                c.refresh();
+                            } else {
+                                c.result.set_text("Invalid overlay range");
+                            }
+                        } else {
+                            c.result.set_text("Invalid overlay response");
+                        }
+                    }
+                    Err(_) => c.result.set_text("Invalid overlay response"),
+                }
+            }
+            Ok(Ok(o)) => c.result.set_text(&String::from_utf8_lossy(&o.stderr)),
+            _ => c.result.set_text("Could not start the native edge overlay"),
+        }
+    });
 }
 
 #[cfg(test)]

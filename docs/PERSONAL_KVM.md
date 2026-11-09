@@ -73,3 +73,24 @@ conversion), stable monitor identity, per-monitor exposed-edge validation, edita
 physical sizes and multi-point calibration UI, persistent always-visible markers,
 and Windows real-display tests. The draft's selected range alone does not change
 where the cursor currently switches computers.
+
+## macOS native overlay correction (2026-11-09)
+
+Replaced the macOS fullscreen editing surface with an AppKit helper: one 4-point
+click-through line, two 24-point borderless handle panels, and a 420-point-wide
+control panel. No desktop-sized input surface is created; panels join existing
+Spaces rather than entering fullscreen. GTK editor hides while selection is active
+and restores afterward. Dragging uses deltas from the initial range to avoid a jump
+when pressing the edge-clamped handle. No global keyboard/mouse monitors or new
+permissions are requested. Cancel is always available in the panel; Escape works
+while it has keyboard focus. Display changes and a five-minute editing timeout
+cancel safely. A per-user lock prevents simultaneous selector helpers.
+
+The helper re-matches the GTK monitor snapshot against normalized NSScreen frames;
+a missing/ambiguous match aborts rather than targeting the wrong display. Tests
+cover native coordinate conversion; 7 input-event + 5 GTK-library tests and all
+workspace Clippy checks pass. Native UI verification observed the small floating
+panel and successful confirm/return (not a fullscreen surface). Actual mouse
+passthrough to other applications and every handle/edge combination still need
+manual acceptance testing. Non-macOS builds currently retain the fullscreen
+fallback; a Windows-native equivalent is not implemented yet.

@@ -548,9 +548,11 @@ Run `cargo +1.91.1 run -p lan-mouse-gtk --example edge-selector` to open the
 standalone range editor without contacting a daemon. On macOS,
 `./tools/build-edge-editor-macos.sh` builds `target/Edge Range Editor.app`.
 Choose a monitor and edge, then select **在真实屏幕边缘选择范围…**.
-A fullscreen editing surface appears on that actual monitor: click along the
-edge or drag its endpoint handles, confirm to keep the selection, or press
-Escape to discard it. The small preview is secondary.
+On macOS a native overlay shows only a thin edge line, two draggable handles,
+and a small control panel on the real display. The line is click-through; no
+fullscreen window or new Space is created. Drag a handle, confirm to keep the
+selection, or cancel (Escape while the panel is focused). Other platforms retain
+the GTK fullscreen fallback for now. The small preview is secondary.
 
 Export/import uses a validated local JSON draft. It does **not** update live
 Lan Mouse configuration yet. Monitor geometry is a GDK logical-coordinate
