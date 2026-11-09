@@ -94,3 +94,14 @@ panel and successful confirm/return (not a fullscreen surface). Actual mouse
 passthrough to other applications and every handle/edge combination still need
 manual acceptance testing. Non-macOS builds currently retain the fullscreen
 fallback; a Windows-native equivalent is not implemented yet.
+
+### Endpoint reachability fix
+
+Native edge panels now override AppKit frame constraining so the menu bar does not
+push the top handle down into visibleFrame. Only the thin line and small handles
+sit just above status-bar level; the control panel remains floating. Dragging
+within 12 logical points of an axis endpoint snaps exactly to 0 or 1, while normal
+dragging retains the original grab offset. Native regression tests cover all four
+axis endpoints, negative display coordinates, grab offset and frame constraints.
+The rebuilt helper is used the next time the overlay opens; an already-running
+selection session is deliberately not terminated or discarded.
