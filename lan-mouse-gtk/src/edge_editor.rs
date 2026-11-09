@@ -1,6 +1,9 @@
 //! Native local edge selection editor. Does not connect to or mutate the daemon.
-use gtk::{gdk, gio, prelude::*};
-use input_event::edge_portal::{Edge, PortalDraft, drag_fraction};
+use adw::prelude::*;
+use gtk::{gdk, gio};
+#[cfg(not(target_os = "macos"))]
+use input_event::edge_portal::drag_fraction;
+use input_event::edge_portal::{Edge, PortalDraft};
 use std::{cell::RefCell, rc::Rc};
 
 #[derive(Clone)]
@@ -17,7 +20,6 @@ struct Controls {
     reversed: gtk::CheckButton,
     id: gtk::Entry,
     result: gtk::Label,
-    area: gtk::DrawingArea,
     monitors: Rc<Vec<Monitor>>,
 }
 impl Controls {
@@ -49,25 +51,23 @@ impl Controls {
         match self.draft() {
             Ok(d) => {
                 let m = d.mapping().unwrap();
-                self.result.set_text(&format!("Local coordinate {:.1} → {:.1}  •  midpoint {:.1}\nExport is a draft; live screen switching is not changed.",m.denormalize(0.0).unwrap(),m.denormalize(1.0).unwrap(),m.denormalize(0.5).unwrap()));
+                let _ = m;
+                self.result.set_text(&if d.start == 0.0 && d.end == 1.0 {
+                    "整个边缘".to_owned()
+                } else {
+                    format!(
+                        "{:.1}% – {:.1}% · 覆盖 {:.1}%",
+                        d.start * 100.0,
+                        d.end * 100.0,
+                        (d.end - d.start) * 100.0
+                    )
+                });
             }
             Err(e) => self.result.set_text(e),
         }
-        self.area.queue_draw();
     }
 }
-fn frame(width: i32, height: i32, rect: [i32; 4]) -> (f64, f64, f64, f64) {
-    let scale = ((f64::from(width) - 100.0) / f64::from(rect[2]))
-        .min((f64::from(height) - 80.0) / f64::from(rect[3]))
-        .max(0.001);
-    let (w, h) = (f64::from(rect[2]) * scale, f64::from(rect[3]) * scale);
-    (
-        (f64::from(width) - w) / 2.0,
-        (f64::from(height) - h) / 2.0,
-        w,
-        h,
-    )
-}
+#[cfg(any(not(target_os = "macos"), test))]
 fn point(edge: Edge, t: f64, r: (f64, f64, f64, f64)) -> (f64, f64) {
     let (x, y, w, h) = r;
     match edge {
@@ -78,6 +78,24 @@ fn point(edge: Edge, t: f64, r: (f64, f64, f64, f64)) -> (f64, f64) {
     }
 }
 pub fn show(app: &adw::Application) {
+    show_for_peer(app, None, "范围配置预览", "preview", 0);
+}
+
+pub fn show_for_peer(
+    app: &adw::Application,
+    parent: Option<&gtk::Window>,
+    peer: &str,
+    key: &str,
+    position: u32,
+) {
+    let window_id = format!(
+        "edge-range-{}",
+        draft_path(key).file_stem().unwrap().to_string_lossy()
+    );
+    if let Some(existing) = app.windows().iter().find(|w| w.widget_name() == window_id) {
+        existing.present();
+        return;
+    }
     let monitors: Vec<_> = gdk::Display::default()
         .map(|d| {
             let list = d.monitors();
@@ -103,10 +121,18 @@ pub fn show(app: &adw::Application) {
         .unwrap_or_default();
     let window = gtk::ApplicationWindow::builder()
         .application(app)
-        .title("Lan Mouse · Edge range editor")
-        .default_width(850)
-        .default_height(680)
+        .title("切换范围")
+        .default_width(560)
+        .default_height(480)
         .build();
+    window.set_widget_name(&window_id);
+    if let Some(parent) = parent {
+        window.set_transient_for(Some(parent));
+    }
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let header = adw::HeaderBar::new();
+    header.set_title_widget(Some(&adw::WindowTitle::new("切换范围", peer)));
+    window.set_titlebar(Some(&header));
     let body = gtk::Box::new(gtk::Orientation::Vertical, 12);
     for set in [
         gtk::Widget::set_margin_top,
@@ -116,54 +142,55 @@ pub fn show(app: &adw::Application) {
     ] {
         set(body.upcast_ref(), 20);
     }
-    let title = gtk::Label::new(Some("Choose a local screen edge"));
-    title.add_css_class("title-2");
-    body.append(&title);
+    let group = adw::PreferencesGroup::new();
+    group.set_description(Some("选择本机屏幕，再到屏幕边缘拖动两个端点。"));
+    body.append(&group);
     let monitor = gtk::ComboBoxText::new();
     for m in &monitors {
-        monitor.append_text(&m.label);
+        monitor.append_text(m.label.split(" · ").next().unwrap_or(&m.label));
     }
     if !monitors.is_empty() {
         monitor.set_active(Some(0));
     }
-    body.append(&monitor);
+    let monitor_row = adw::ActionRow::builder().title("屏幕").build();
+    monitor.set_valign(gtk::Align::Center);
+    monitor_row.add_suffix(&monitor);
+    monitor_row.set_activatable_widget(Some(&monitor));
+    group.add(&monitor_row);
     let edge = gtk::ComboBoxText::new();
-    for s in ["Left", "Right", "Top", "Bottom"] {
+    for s in ["左侧", "右侧", "顶部", "底部"] {
         edge.append_text(s);
     }
-    edge.set_active(Some(0));
+    edge.set_active(Some(position.min(3)));
     let id = gtk::Entry::builder()
-        .text("mac-windows")
-        .placeholder_text("Matching portal ID on both computers")
+        .text("default")
+        .placeholder_text("与对端一致的通道名称")
         .build();
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    row.append(&gtk::Label::new(Some("Portal")));
-    row.append(&id);
-    row.append(&edge);
-    body.append(&row);
-    let area = gtk::DrawingArea::builder()
-        .content_width(700)
-        .content_height(330)
-        .hexpand(true)
-        .vexpand(true)
-        .build();
-    body.append(&area);
+    let edge_row = adw::ActionRow::builder().title("边缘").build();
+    edge.set_valign(gtk::Align::Center);
+    edge_row.add_suffix(&edge);
+    edge_row.set_activatable_widget(Some(&edge));
+    group.add(&edge_row);
     let start = gtk::SpinButton::with_range(0.0, 100.0, 0.1);
     let end = gtk::SpinButton::with_range(0.0, 100.0, 0.1);
     start.set_digits(1);
     end.set_digits(1);
     end.set_value(100.0);
-    let reversed = gtk::CheckButton::with_label("Reverse correspondence");
+    let reversed = gtk::CheckButton::with_label("反转两端对应方向");
     let range = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    range.append(&gtk::Label::new(Some("Start %")));
+    range.append(&gtk::Label::new(Some("起点 %")));
     range.append(&start);
-    range.append(&gtk::Label::new(Some("End %")));
+    range.append(&gtk::Label::new(Some("终点 %")));
     range.append(&end);
-    range.append(&reversed);
-    body.append(&range);
+
     let result = gtk::Label::new(None);
-    result.set_wrap(true);
-    body.append(&result);
+    result.set_wrap(false);
+    result.set_width_chars(20);
+    result.set_xalign(1.0);
+    result.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    let selection_row = adw::ActionRow::builder().title("选定范围").build();
+    selection_row.add_suffix(&result);
+    group.add(&selection_row);
     let c = Controls {
         monitor,
         edge,
@@ -172,10 +199,9 @@ pub fn show(app: &adw::Application) {
         reversed,
         id,
         result,
-        area,
         monitors: Rc::new(monitors),
     };
-    let select = gtk::Button::with_label("在真实屏幕边缘选择范围…");
+    let select = gtk::Button::with_label("在屏幕上调整…");
     select.add_css_class("suggested-action");
     let local = c.clone();
     let parent = window.downgrade();
@@ -184,13 +210,31 @@ pub fn show(app: &adw::Application) {
             select_on_screen(&local, &parent);
         }
     });
-    body.prepend(&select);
+    body.append(&select);
+    let advanced = adw::ExpanderRow::builder()
+        .title("高级选项")
+        .subtitle("精确范围、方向与配置文件")
+        .build();
+    let advanced_list = gtk::ListBox::new();
+    advanced_list.add_css_class("boxed-list");
+    advanced_list.set_selection_mode(gtk::SelectionMode::None);
+    advanced_list.append(&advanced);
+    body.append(&advanced_list);
+    let range_row = adw::ActionRow::builder().title("范围百分比").build();
+    range_row.add_suffix(&range);
+    advanced.add_row(&range_row);
+    let reverse_row = adw::ActionRow::builder().title("对应方向").build();
+    reverse_row.add_suffix(&c.reversed);
+    advanced.add_row(&reverse_row);
+    let id_row = adw::ActionRow::builder().title("配对通道").build();
+    id_row.add_suffix(&c.id);
+    advanced.add_row(&id_row);
     let presets = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     for (name, a, b) in [
-        ("Whole edge", 0.0, 100.0),
-        ("First half", 0.0, 50.0),
-        ("Centered half", 25.0, 75.0),
-        ("Last half", 50.0, 100.0),
+        ("整个边缘", 0.0, 100.0),
+        ("前半段", 0.0, 50.0),
+        ("中间一半", 25.0, 75.0),
+        ("后半段", 50.0, 100.0),
     ] {
         let button = gtk::Button::with_label(name);
         let c = c.clone();
@@ -200,90 +244,9 @@ pub fn show(app: &adw::Application) {
         });
         presets.append(&button);
     }
-    body.append(&presets);
-    let draw = c.clone();
-    c.area.set_draw_func(move |_, ctx, w, h| {
-        ctx.set_source_rgb(0.08, 0.10, 0.14);
-        let _ = ctx.paint();
-        let Some(m) = draw
-            .monitor
-            .active()
-            .and_then(|i| draw.monitors.get(i as usize))
-        else {
-            return;
-        };
-        let r = frame(w, h, m.rect);
-        ctx.set_source_rgb(0.20, 0.25, 0.33);
-        ctx.rectangle(r.0, r.1, r.2, r.3);
-        let _ = ctx.fill();
-        ctx.set_source_rgb(0.65, 0.72, 0.82);
-        ctx.set_font_size(15.0);
-        ctx.move_to(r.0 + 15.0, r.1 + 25.0);
-        let _ = ctx.show_text("Drag the blue endpoints");
-        if let Ok(d) = draw.draft() {
-            let a = point(d.edge, d.start, r);
-            let b = point(d.edge, d.end, r);
-            ctx.set_source_rgb(0.25, 0.68, 1.0);
-            ctx.set_line_width(6.0);
-            ctx.move_to(a.0, a.1);
-            ctx.line_to(b.0, b.1);
-            let _ = ctx.stroke();
-            for (i, p) in [a, b].iter().enumerate() {
-                ctx.arc(p.0, p.1, 9.0, 0.0, std::f64::consts::TAU);
-                let _ = ctx.fill();
-                ctx.move_to(p.0 + 12.0, p.1);
-                let label = if (i == 0) != d.reversed { "0" } else { "1" };
-                let _ = ctx.show_text(label);
-            }
-        }
-    });
-    let drag = gtk::GestureDrag::new();
-    let active = Rc::new(RefCell::new(None::<(bool, f64, f64)>));
-    let begin = c.clone();
-    let selected = active.clone();
-    drag.connect_drag_begin(move |_, x, y| {
-        *selected.borrow_mut() = None;
-        let Ok(d) = begin.draft() else { return };
-        let r = frame(begin.area.width(), begin.area.height(), d.monitor_rect);
-        for (is_start, t) in [(true, d.start), (false, d.end)] {
-            let p = point(d.edge, t, r);
-            if (p.0 - x).hypot(p.1 - y) < 24.0 {
-                *selected.borrow_mut() = Some((is_start, x, y));
-                break;
-            }
-        }
-    });
-    let change = c.clone();
-    let selected = active.clone();
-    drag.connect_drag_update(move |_, dx, dy| {
-        let Some((first, x, y)) = *selected.borrow() else {
-            return;
-        };
-        let Ok(d) = change.draft() else { return };
-        let r = frame(change.area.width(), change.area.height(), d.monitor_rect);
-        let vertical = matches!(d.edge, Edge::Left | Edge::Right);
-        let Some(t) = drag_fraction(
-            if vertical { y + dy } else { x + dx },
-            if vertical { r.1 } else { r.0 },
-            if vertical { r.3 } else { r.2 },
-        ) else {
-            return;
-        };
-        if first {
-            change
-                .start
-                .set_value((t * 100.0).min(change.end.value() - 0.1));
-        } else {
-            change
-                .end
-                .set_value((t * 100.0).max(change.start.value() + 0.1));
-        }
-    });
-    drag.connect_drag_end(move |_, _, _| {
-        *active.borrow_mut() = None;
-    });
-    let drag_cleanup = drag.clone();
-    c.area.add_controller(drag);
+    let preset_row = adw::ActionRow::new();
+    preset_row.add_suffix(&presets);
+    advanced.add_row(&preset_row);
     let handlers = Rc::new(RefCell::new(Vec::<(
         gtk::glib::Object,
         gtk::glib::SignalHandlerId,
@@ -307,7 +270,7 @@ pub fn show(app: &adw::Application) {
         .borrow_mut()
         .push((c.reversed.clone().upcast(), handler));
     let files = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    for (label, save) in [("Import draft…", false), ("Export draft…", true)] {
+    for (label, save) in [("导入…", false), ("导出…", true)] {
         let button = gtk::Button::with_label(label);
         let c = c.clone();
         let parent = window.downgrade();
@@ -333,18 +296,87 @@ pub fn show(app: &adw::Application) {
         });
         files.append(&button);
     }
-    body.append(&files);
-    let note = gtk::Label::new(Some(
-        "Each computer chooses its own interval. Use the same portal ID on its peer.\nClosing discards unsaved edits. Screen changes require reopening this editor.",
-    ));
+    let file_row = adw::ActionRow::builder().title("配置文件").build();
+    file_row.add_suffix(&files);
+    advanced.add_row(&file_row);
+    let note = gtk::Label::new(Some("实验功能 · 当前仅保存范围，尚未用于实际跨屏切换。"));
+    note.add_css_class("dim-label");
     note.set_wrap(true);
     body.append(&note);
-    window.set_child(Some(&body));
+    let save = gtk::Button::with_label("保存范围");
+    save.add_css_class("suggested-action");
+    let target = draft_path(key);
+    let saved = c.clone();
+    let weak = window.downgrade();
+    save.connect_clicked(move |_| {
+        let result = (|| -> Result<(), String> {
+            let d = saved.draft().map_err(str::to_owned)?;
+            if !monitor_is_present(&d) {
+                return Err("屏幕布局已变化，请重新打开范围设置".into());
+            }
+            let parent = target.parent().ok_or("Invalid config path")?;
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            let bytes = serde_json::to_vec_pretty(&d).map_err(|e| e.to_string())?;
+            gio::File::for_path(&target)
+                .replace_contents(
+                    &bytes,
+                    None,
+                    true,
+                    gio::FileCreateFlags::PRIVATE,
+                    gio::Cancellable::NONE,
+                )
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        })();
+        match result {
+            Ok(()) => {
+                if let Some(w) = weak.upgrade() {
+                    w.close();
+                }
+            }
+            Err(e) => saved.result.set_text(&e),
+        }
+    });
+    header.pack_end(&save);
+    let scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vexpand(true)
+        .child(&body)
+        .build();
+    root.append(&scroll);
+    window.set_child(Some(&root));
+    let mut restored = false;
+    if let Ok(bytes) = std::fs::read(draft_path(key)) {
+        if let Ok(d) = serde_json::from_slice::<PortalDraft>(&bytes) {
+            if d.validate().is_ok() {
+                let matches: Vec<_> = c
+                    .monitors
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, m)| m.rect == d.monitor_rect && m.label == d.monitor_label)
+                    .collect();
+                if matches.len() == 1 {
+                    c.monitor.set_active(Some(matches[0].0 as u32));
+                    c.edge.set_active(Some(match d.edge {
+                        Edge::Left => 0,
+                        Edge::Right => 1,
+                        Edge::Top => 2,
+                        Edge::Bottom => 3,
+                    }));
+                    c.id.set_text(&d.portal_id);
+                    c.start.set_value(d.start * 100.0);
+                    c.end.set_value(d.end * 100.0);
+                    c.reversed.set_active(d.reversed);
+                    restored = true;
+                }
+            }
+        }
+    }
     c.refresh();
-    let cleanup = c.clone();
+    if draft_path(key).exists() && !restored {
+        note.set_text("原范围无法匹配当前屏幕，请重新选择。保存前会保留原文件备份。");
+    }
     window.connect_close_request(move |_| {
-        cleanup.area.unset_draw_func();
-        cleanup.area.remove_controller(&drag_cleanup);
         for (object, id) in handlers.borrow_mut().drain(..) {
             object.disconnect(id);
         }
@@ -689,9 +721,60 @@ fn select_on_screen(c: &Controls, parent: &gtk::ApplicationWindow) {
     });
 }
 
+fn draft_path(key: &str) -> std::path::PathBuf {
+    // Fixed-length digest: arbitrary host names cannot escape or overflow filenames.
+    use sha2::Digest;
+    let name = format!("{:x}", sha2::Sha256::digest(key.as_bytes()));
+    gtk::glib::user_config_dir()
+        .join("lan-mouse")
+        .join("edge-drafts")
+        .join(format!("{name}.json"))
+}
+
+fn monitor_is_present(d: &PortalDraft) -> bool {
+    let Some(display) = gdk::Display::default() else {
+        return false;
+    };
+    let list = display.monitors();
+    (0..list.n_items())
+        .filter_map(|i| list.item(i)?.downcast::<gdk::Monitor>().ok())
+        .filter(|m| {
+            let r = m.geometry();
+            let label = format!(
+                "{} {} · {}×{} @ {},{}",
+                m.manufacturer().unwrap_or_default(),
+                m.model().unwrap_or_default(),
+                r.width(),
+                r.height(),
+                r.x(),
+                r.y()
+            );
+            label == d.monitor_label && [r.x(), r.y(), r.width(), r.height()] == d.monitor_rect
+        })
+        .count()
+        == 1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn peer_storage_names_are_bounded_and_isolated() {
+        let a = draft_path("../../unsafe/host:4242");
+        let b = draft_path("other:4242");
+        assert_ne!(a, b);
+        assert_eq!(a.file_name().unwrap().to_str().unwrap().len(), 69);
+        assert_eq!(a.parent(), b.parent());
+        assert_eq!(
+            draft_path(&"x".repeat(10000))
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .len(),
+            69
+        );
+    }
     #[test]
     fn draft_round_trip_and_unknown_fields() {
         let d = PortalDraft {
@@ -718,8 +801,7 @@ mod tests {
     }
     #[test]
     fn preview_aspect_and_endpoints() {
-        let r = frame(800, 600, [-200, 0, 1600, 900]);
-        assert!((r.2 / r.3 - 1600.0 / 900.0).abs() < 1e-12);
+        let r = (0.0, 0.0, 1919.0, 1079.0);
         assert_eq!(point(Edge::Right, 0.0, r), (r.0 + r.2, r.1));
         assert_eq!(point(Edge::Bottom, 1.0, r), (r.0 + r.2, r.1 + r.3));
     }

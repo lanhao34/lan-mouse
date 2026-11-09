@@ -19,6 +19,6 @@ fn main() -> gtk::glib::ExitCode {
         menu.append_submenu(Some("File"), &file);
         app.set_menubar(Some(&menu));
     });
-    app.connect_activate(lan_mouse_gtk::edge_editor::show);
+    app.connect_activate(lan_mouse_gtk::show_client_settings_preview);
     app.run()
 }

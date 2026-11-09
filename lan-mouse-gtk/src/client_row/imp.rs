@@ -19,6 +19,8 @@ pub struct ClientRow {
     #[template_child]
     pub dns_button: TemplateChild<gtk::Button>,
     #[template_child]
+    pub edge_range_button: TemplateChild<gtk::Button>,
+    #[template_child]
     pub hostname: TemplateChild<gtk::Entry>,
     #[template_child]
     pub port: TemplateChild<gtk::Entry>,
@@ -60,6 +62,41 @@ impl ObjectSubclass for ClientRow {
 impl ObjectImpl for ClientRow {
     fn constructed(&self) {
         self.parent_constructed();
+        self.edge_range_button.connect_clicked(clone!(
+            #[weak(rename_to = row)]
+            self,
+            move |_| {
+                let Some(client) = row.client_object.borrow().clone() else {
+                    return;
+                };
+                let Some(parent) = row
+                    .obj()
+                    .root()
+                    .and_then(|r| r.downcast::<gtk::Window>().ok())
+                else {
+                    return;
+                };
+                let Some(app) = parent
+                    .application()
+                    .and_then(|a| a.downcast::<adw::Application>().ok())
+                else {
+                    return;
+                };
+                let peer = client
+                    .hostname()
+                    .filter(|s| !s.is_empty())
+                    .or_else(|| client.ips().first().cloned())
+                    .unwrap_or_else(|| "未命名设备".into());
+                let key = format!("{}:{}", peer, client.port());
+                let position = match client.position().as_str() {
+                    "right" => 1,
+                    "top" => 2,
+                    "bottom" => 3,
+                    _ => 0,
+                };
+                crate::edge_editor::show_for_peer(&app, Some(&parent), &peer, &key, position);
+            }
+        ));
         self.delete_button.connect_clicked(clone!(
             #[weak(rename_to = row)]
             self,

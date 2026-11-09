@@ -69,6 +69,17 @@
 				</property>
 			</object>
 		</child>
+        <child>
+            <object class="AdwActionRow">
+                <property name="title" translatable="yes">切换范围</property>
+                <property name="subtitle" translatable="yes">在本机屏幕边缘调整 · 实验功能</property>
+                <property name="activatable-widget">edge_range_button</property>
+                <child><object class="GtkButton" id="edge_range_button">
+                    <property name="label" translatable="yes">设置…</property>
+                    <property name="valign">center</property>
+                </object></child>
+            </object>
+        </child>
 		<!-- delete button -->
 		<child>
 			<object class="AdwActionRow" id="delete_row">

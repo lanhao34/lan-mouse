@@ -184,14 +184,6 @@ fn setup_actions(app: &adw::Application) {
         }
     });
     app.add_action(&quit_action);
-    let action = gio::SimpleAction::new("edge-editor", None);
-    let weak = app.downgrade();
-    action.connect_activate(move |_, _| {
-        if let Some(app) = weak.upgrade() {
-            edge_editor::show(&app);
-        }
-    });
-    app.add_action(&action);
 }
 
 // Set up a global menu
@@ -201,7 +193,6 @@ fn setup_menu(app: &adw::Application) {
     let menu = gio::Menu::new();
 
     let file_menu = gio::Menu::new();
-    file_menu.append(Some("Edge range editor…"), Some("app.edge-editor"));
     file_menu.append(Some("Quit"), Some("app.quit"));
     menu.append_submenu(Some("_File"), &file_menu);
 
@@ -353,4 +344,46 @@ fn build_ui(app: &Application) {
     if env::var_os("LAN_MOUSE_HIDDEN").is_none() {
         window.present();
     }
+}
+
+/// Development-only shell using the real client row without any daemon IPC.
+#[doc(hidden)]
+pub fn show_client_settings_preview(app: &adw::Application) {
+    use adw::prelude::{ExpanderRowExt, PreferencesGroupExt};
+    gio::resources_register_include!("lan-mouse.gresource").expect("resources");
+    let window = gtk::ApplicationWindow::builder()
+        .application(app)
+        .title("Lan Mouse · 配置预览")
+        .default_width(560)
+        .default_height(540)
+        .build();
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let header = adw::HeaderBar::new();
+    header.set_title_widget(Some(&adw::WindowTitle::new(
+        "Lan Mouse",
+        "配置预览 · 未连接服务",
+    )));
+    window.set_titlebar(Some(&header));
+    let group = adw::PreferencesGroup::builder()
+        .title("连接")
+        .margin_top(24)
+        .margin_bottom(24)
+        .margin_start(24)
+        .margin_end(24)
+        .build();
+    let object = ClientObject::new(
+        0,
+        lan_mouse_ipc::ClientConfig {
+            hostname: Some("Windows（界面预览）".into()),
+            ..Default::default()
+        },
+        Default::default(),
+    );
+    let row = client_row::ClientRow::new(&object);
+    row.bind(&object);
+    row.set_expanded(true);
+    group.add(&row);
+    root.append(&group);
+    window.set_child(Some(&root));
+    window.present();
 }

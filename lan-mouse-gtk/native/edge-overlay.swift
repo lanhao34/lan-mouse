@@ -108,12 +108,12 @@ final class Selector:NSObject {
                 if index==0{self.start=min(t,self.end-0.001)}else{self.end=max(t,self.start+0.001)};self.refresh()
             }
         }
-        controls.title="边缘范围 · \(screen.localizedName)"
+        controls.title="调整切换范围"
         controls.setContentSize(NSSize(width:420,height:98))
         controls.setFrameOrigin(NSPoint(x:screen.visibleFrame.midX-210,y:screen.visibleFrame.midY-49))
         let body=NSView(frame:NSRect(x:0,y:0,width:420,height:98))
         label.frame=NSRect(x:16,y:62,width:388,height:22);body.addSubview(label)
-        let help=NSTextField(labelWithString:"拖动边缘圆点；桌面正常可用。Esc 取消（面板聚焦时）。")
+        let help=NSTextField(labelWithString:"拖动两个端点，确认后返回设置。Esc 取消（面板聚焦时）。")
         help.font = .systemFont(ofSize:11);help.frame=NSRect(x:16,y:40,width:388,height:18);body.addSubview(help)
         let cancel=NSButton(title:"取消",target:self,action:#selector(cancelled));cancel.frame=NSRect(x:232,y:8,width:80,height:28);body.addSubview(cancel)
         let apply=NSButton(title:"确认范围",target:self,action:#selector(accepted));apply.frame=NSRect(x:316,y:8,width:90,height:28);body.addSubview(apply)

@@ -105,3 +105,22 @@ dragging retains the original grab offset. Native regression tests cover all fou
 axis endpoints, negative display coordinates, grab offset and frame constraints.
 The rebuilt helper is used the next time the overlay opens; an already-running
 selection session is deliberately not terminated or discarded.
+
+## Product UI pass (2026-11-09)
+
+Moved the entry into the actual ClientRow template as a per-client range settings
+subfeature. Removed the global File-menu editor entry and the large preview canvas.
+A compact Libadwaita settings page shows monitor, edge and a single-line range
+summary; native on-screen adjustment remains the primary action. Advanced controls
+are collapsed. Save stores an endpoint-scoped JSON draft via atomic GFile replacement
+with backup and private creation permissions. Hashed storage names prevent host
+strings causing path traversal or filename overflow. Duplicate windows for one
+endpoint are reused. Monitor layout is revalidated before save; unmatched stored
+geometry produces a reselection notice. No daemon schema or protocol is modified.
+
+Validation: 7 input-event tests + 6 GTK-library tests passed, including bounded and
+isolated endpoint storage paths. All-feature workspace Clippy and formatting passed.
+Native offline preview exercised the real client row -> range settings, advanced
+percent editing to 25–100%, save/return, and reopening with that range restored.
+The preview uses a fictitious client and does not send IPC to the running daemon.
+Production installation and actual portal switching remain intentionally separate.

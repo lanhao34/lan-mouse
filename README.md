@@ -559,3 +559,22 @@ Lan Mouse configuration yet. Monitor geometry is a GDK logical-coordinate
 snapshot, not a portable monitor identifier or a CoreGraphics coordinate
 contract. A changed layout requires reopening/reselecting the monitor.
 Runtime portal integration and Windows end-to-end verification remain pending.
+
+
+### Client settings integration
+
+In this development build, expand a client and choose **切换范围 → 设置…**.
+The range page uses the same Libadwaita header, preference groups and action rows
+as Lan Mouse. The main flow is monitor → edge → adjust on screen → save. Precise
+percentages, reverse correspondence, presets and file import/export are collapsed
+under advanced options; the large miniature canvas has been removed.
+
+Local drafts are saved per client endpoint in the platform configuration directory
+under `lan-mouse/edge-drafts/` with fixed-length hashed filenames and replacement
+backups. They are restored when reopening the same client's page. Changing the
+client hostname/IP identity creates a separate draft namespace; these are not
+stable certificate-bound runtime profiles yet. Drafts remain experimental and do
+not alter active input switching until portal backend integration is complete.
+
+The `edge-selector` example now shows an offline Lan Mouse client-settings preview
+using the real client row/template. It never connects to the existing daemon.
