@@ -32,6 +32,15 @@ for binary in roots:
 for path in sorted(needed): shutil.copy2(path, dest/path.name)
 
 shutil.copytree(root/'target/windows-edge-overlay',dest/'native-edge-overlay',dirs_exist_ok=True)
+notices = dest/'share/licenses/dotnet-runtime'
+notices.mkdir(parents=True, exist_ok=True)
+for package in ['microsoft.netcore.app.runtime.win-x64', 'microsoft.windowsdesktop.app.runtime.win-x64']:
+    package_dir = Path.home()/'.nuget/packages'/package
+    if package_dir.exists():
+        for version in package_dir.iterdir():
+            for name in ['LICENSE', 'LICENSE.TXT', 'THIRD-PARTY-NOTICES.TXT']:
+                source = version/name
+                if source.is_file(): shutil.copy2(source, notices/f'{package}-{version.name}-{name}')
 for file in ['LICENSE', 'docs/WINDOWS_TEST_BUILD.md']:
     shutil.copy2(root/file,dest/Path(file).name)
 (dest/'SOURCE_COMMIT.txt').write_text(subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()+'\n',encoding='utf-8')

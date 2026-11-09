@@ -16,3 +16,6 @@ repo
 # Native Windows overlay build outputs
 lan-mouse-gtk/native/windows/bin/
 lan-mouse-gtk/native/windows/obj/
+
+# Python tooling bytecode
+tools/__pycache__/

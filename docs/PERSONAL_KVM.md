@@ -141,3 +141,10 @@ self-contained runtime. A separate publish job creates a clearly marked prerelea
 only after successful tests and packaged --version checks. See WINDOWS_TEST_BUILD.md
 for actual supported scope and manual acceptance tests. No settings are installed
 or modified on the user's existing Windows machine by this workflow.
+
+Local checks for the Windows addition: the .NET Windows-targeted overlay compiles
+and publishes as a PE32+ x64 executable with its runtime from the Mac SDK, without
+executing Windows binaries. Mac Rust tests and workspace Clippy also pass. These
+checks do not replace the Windows runner tests or on-device mixed-DPI validation.
+The portable full application package is only published by CI after its checks
+succeed; a standalone helper build is not presented as a complete Lan Mouse release.

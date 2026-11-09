@@ -71,7 +71,7 @@ sealed class EdgeForm : Form
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        if (passthrough) SetLayeredWindowAttributes(Handle,0,255,2);
+        if (passthrough && !SetLayeredWindowAttributes(Handle,0,255,2)) throw new InvalidOperationException("Could not create transparent edge line");
     }
     protected override void WndProc(ref Message m)
     {
@@ -168,6 +168,7 @@ static class Program
         try
         {
             if(args.SequenceEqual(new[]{"--self-test"})) {Geometry.Test();return 0;}
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
             bool smoke=args.SequenceEqual(new[]{"--smoke-test"});
             if(smoke) {using var ui=new Selection(Screen.PrimaryScreen ?? throw new Exception("No screen"),"left",.2,.8,true);Application.Run(ui);return 0;}

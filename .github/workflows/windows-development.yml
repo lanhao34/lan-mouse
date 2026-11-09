@@ -55,7 +55,7 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="/ucrt64/bin:$PATH"
-          export PKG_CONFIG=/ucrt64/bin/pkg-config
+          export PKG_CONFIG="$(cygpath -m /ucrt64/bin/pkgconf.exe)"
           export GSETTINGS_SCHEMA_DIR=/ucrt64/share/glib-2.0/schemas
           /ucrt64/bin/rustc --version
           /ucrt64/bin/cargo --version
