@@ -124,3 +124,20 @@ Native offline preview exercised the real client row -> range settings, advanced
 percent editing to 25–100%, save/return, and reopening with that range restored.
 The preview uses a fictitious client and does not send IPC to the running daemon.
 Production installation and actual portal switching remain intentionally separate.
+
+## Windows native overlay and build pipeline
+
+Windows now launches a separate self-contained .NET 8 WinForms helper. It creates
+only a click-through topmost line, two small drag handles and a control panel;
+there is no fullscreen surface or global input hook. GDK monitor geometry and its
+runtime scale are matched against per-monitor-DPI-aware native Screen bounds;
+ambiguous/stale matches fail rather than choosing another screen. Screen changes,
+Escape/cancel and a five-minute timeout discard edits. Rust launches it without a
+console and validates its JSON result before updating the client draft.
+
+Windows development CI runs on windows-2025 with the MSYS2 UCRT64 Rust/GTK toolchain,
+uses the checked-in Cargo.lock, builds/tests the native helper and packages a
+self-contained runtime. A separate publish job creates a clearly marked prerelease
+only after successful tests and packaged --version checks. See WINDOWS_TEST_BUILD.md
+for actual supported scope and manual acceptance tests. No settings are installed
+or modified on the user's existing Windows machine by this workflow.

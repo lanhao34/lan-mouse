@@ -551,8 +551,8 @@ Choose a monitor and edge, then select **在真实屏幕边缘选择范围…**.
 On macOS a native overlay shows only a thin edge line, two draggable handles,
 and a small control panel on the real display. The line is click-through; no
 fullscreen window or new Space is created. Drag a handle, confirm to keep the
-selection, or cancel (Escape while the panel is focused). Other platforms retain
-the GTK fullscreen fallback for now. The small preview is secondary.
+selection, or cancel (Escape while the panel is focused). Windows uses a native WinForms overlay with the same small-window interaction.
+Other platforms retain the GTK fullscreen fallback for now. The small preview is secondary.
 
 Export/import uses a validated local JSON draft. It does **not** update live
 Lan Mouse configuration yet. Monitor geometry is a GDK logical-coordinate
@@ -578,3 +578,6 @@ not alter active input switching until portal backend integration is complete.
 
 The `edge-selector` example now shows an offline Lan Mouse client-settings preview
 using the real client row/template. It never connects to the existing daemon.
+
+Windows development ZIPs are built by the **Windows development package** workflow.
+See [Windows test build instructions](docs/WINDOWS_TEST_BUILD.md).

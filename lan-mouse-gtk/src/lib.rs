@@ -80,6 +80,9 @@ fn gtk_main() -> glib::ExitCode {
         install_macos_gtk_log_filter();
     }
 
+    #[cfg(windows)]
+    configure_windows_bundle_environment();
+
     gio::resources_register_include!("lan-mouse.gresource").expect("Failed to register resources.");
 
     let app = Application::builder()
@@ -349,6 +352,8 @@ fn build_ui(app: &Application) {
 /// Development-only shell using the real client row without any daemon IPC.
 #[doc(hidden)]
 pub fn show_client_settings_preview(app: &adw::Application) {
+    #[cfg(windows)]
+    configure_windows_bundle_environment();
     use adw::prelude::{ExpanderRowExt, PreferencesGroupExt};
     gio::resources_register_include!("lan-mouse.gresource").expect("resources");
     let window = gtk::ApplicationWindow::builder()
@@ -386,4 +391,28 @@ pub fn show_client_settings_preview(app: &adw::Application) {
     root.append(&group);
     window.set_child(Some(&root));
     window.present();
+}
+
+#[cfg(windows)]
+fn configure_windows_bundle_environment() {
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let Some(root) = exe.parent() else { return };
+    let share = root.join("share");
+    if share.is_dir() {
+        std::env::set_var("XDG_DATA_DIRS", &share);
+        let schemas = share.join("glib-2.0/schemas");
+        if schemas.is_dir() {
+            std::env::set_var("GSETTINGS_SCHEMA_DIR", schemas);
+        }
+    }
+    let loaders = root.join("lib/gdk-pixbuf-2.0/2.10.0/loaders");
+    if loaders.is_dir() {
+        std::env::set_var("GDK_PIXBUF_MODULEDIR", loaders);
+    }
+    let cache = root.join("loaders.cache");
+    if cache.is_file() {
+        std::env::set_var("GDK_PIXBUF_MODULE_FILE", cache);
+    }
 }

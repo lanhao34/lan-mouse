@@ -1,7 +1,7 @@
 //! Native local edge selection editor. Does not connect to or mutate the daemon.
 use adw::prelude::*;
 use gtk::{gdk, gio};
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows)))]
 use input_event::edge_portal::drag_fraction;
 use input_event::edge_portal::{Edge, PortalDraft};
 use std::{cell::RefCell, rc::Rc};
@@ -67,7 +67,7 @@ impl Controls {
         }
     }
 }
-#[cfg(any(not(target_os = "macos"), test))]
+#[cfg(any(not(any(target_os = "macos", windows)), test))]
 fn point(edge: Edge, t: f64, r: (f64, f64, f64, f64)) -> (f64, f64) {
     let (x, y, w, h) = r;
     match edge {
@@ -387,7 +387,7 @@ pub fn show_for_peer(
 
 /// A dedicated edit-only fullscreen surface on the selected physical monitor.
 /// All handle positions are monitor-relative, not scaled preview coordinates.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows)))]
 fn select_on_screen(c: &Controls, parent: &gtk::ApplicationWindow) {
     let draft = match c.draft() {
         Ok(d) => d,
@@ -650,7 +650,7 @@ fn select_on_screen(c: &Controls, parent: &gtk::ApplicationWindow) {
     window.present();
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 fn select_on_screen(c: &Controls, parent: &gtk::ApplicationWindow) {
     let d = match c.draft() {
         Ok(d) => d,
@@ -659,14 +659,29 @@ fn select_on_screen(c: &Controls, parent: &gtk::ApplicationWindow) {
             return;
         }
     };
+    #[cfg(target_os = "macos")]
     let bundled = std::env::current_exe().ok().and_then(|p| {
         p.parent()
             .map(|p| p.join("../Helpers/EdgeOverlay.app/Contents/MacOS/edge-overlay"))
     });
+    #[cfg(target_os = "macos")]
     let helper = bundled
         .filter(|p| p.exists())
         .unwrap_or_else(|| std::path::PathBuf::from(env!("LAN_MOUSE_EDGE_OVERLAY")));
-    let args = vec![
+    #[cfg(windows)]
+    let helper = match std::env::current_exe().ok().and_then(|p| {
+        p.parent()
+            .map(|p| p.join("native-edge-overlay/edge-overlay.exe"))
+    }) {
+        Some(path) if path.is_file() => path,
+        _ => {
+            c.result
+                .set_text("缺少 Windows 边缘选择组件，请使用完整发行包。");
+            return;
+        }
+    };
+    #[allow(unused_mut)]
+    let mut args = vec![
         d.monitor_rect[0].to_string(),
         d.monitor_rect[1].to_string(),
         d.monitor_rect[2].to_string(),
@@ -681,13 +696,55 @@ fn select_on_screen(c: &Controls, parent: &gtk::ApplicationWindow) {
         d.start.to_string(),
         d.end.to_string(),
     ];
+    #[cfg(windows)]
+    {
+        let Some(display) = gdk::Display::default() else {
+            return;
+        };
+        let list = display.monitors();
+        let selected: Vec<_> = (0..list.n_items())
+            .filter_map(|i| list.item(i)?.downcast::<gdk::Monitor>().ok())
+            .filter(|m| {
+                let r = m.geometry();
+                let label = format!(
+                    "{} {} · {}×{} @ {},{}",
+                    m.manufacturer().unwrap_or_default(),
+                    m.model().unwrap_or_default(),
+                    r.width(),
+                    r.height(),
+                    r.x(),
+                    r.y()
+                );
+                label == d.monitor_label && [r.x(), r.y(), r.width(), r.height()] == d.monitor_rect
+            })
+            .collect();
+        if selected.len() != 1 {
+            c.result.set_text("屏幕布局已变化，请重新打开设置。");
+            return;
+        }
+        let m = &selected[0];
+        let scale = if m.find_property("scale").is_some() {
+            m.property::<f64>("scale")
+        } else {
+            f64::from(m.scale_factor())
+        };
+        args.push(scale.to_string());
+    }
     let c = c.clone();
     let weak = parent.downgrade();
     parent.set_visible(false);
     gtk::glib::MainContext::default().spawn_local(async move {
-        let output =
-            gio::spawn_blocking(move || std::process::Command::new(helper).args(args).output())
-                .await;
+        let output = gio::spawn_blocking(move || {
+            let mut command = std::process::Command::new(helper);
+            command.args(args);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                command.creation_flags(0x08000000);
+            }
+            command.output()
+        })
+        .await;
         if let Some(parent) = weak.upgrade() {
             parent.present();
         }

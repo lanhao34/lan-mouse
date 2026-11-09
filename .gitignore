@@ -12,3 +12,7 @@ extfile.conf
 # flatpak files
 .flatpak-builder
 repo
+
+# Native Windows overlay build outputs
+lan-mouse-gtk/native/windows/bin/
+lan-mouse-gtk/native/windows/obj/
