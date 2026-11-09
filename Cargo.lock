@@ -1794,9 +1794,11 @@ dependencies = [
  "glib-build-tools",
  "gtk4",
  "hostname",
+ "input-event",
  "lan-mouse-ipc",
  "libadwaita",
  "log",
+ "serde_json",
  "thiserror 2.0.18",
 ]
 

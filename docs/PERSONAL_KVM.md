@@ -44,3 +44,32 @@ Use `cargo +1.91.1` in this checkout.
 - `cargo +1.91.1 clippy --workspace --all-targets --all-features --locked`: passed on this Mac, including GTK compilation/checking.
 - `git diff --check`: passed.
 - No Windows build, physical crossing test, overlay, or live deployment was performed.
+
+## Range editor milestone (2026-11-09)
+
+Added a native GTK editor and an independent example app (no daemon/IPC connection).
+Primary selection now occurs on a fullscreen surface on the selected real monitor,
+not in a miniature diagram. Click on the actual edge to position its nearest
+endpoint or drag a handle; confirm copies the interval into the draft, Escape
+cancels. The overlay may obscure underlying desktop content depending on platform
+compositing; it still occupies the actual chosen display. No global event taps,
+recording permissions, certificate changes or live input settings are involved.
+
+Review fixes: validate imported schema/ranges/finite values, reject ambiguous
+monitor snapshots, bound import reads to 64 KiB, revalidate monitor geometry before
+export, tolerate floating-point representation at the 0.1% minimum interval, and
+break editor signal-reference cycles when closing. Group click/drag gestures so
+both can operate on the same boundary surface.
+
+Tests: 7 input-event and 5 GTK-library tests passed; workspace all-target/all-feature
+Clippy and formatting passed. Native UI verification confirmed monitor enumeration,
+real-screen overlay placement, edge click -> 26.9% start selection, confirmation
+back to the editor, and Escape cancellation. Drag motion and actual file chooser
+save/import are not fully verified end-to-end. The JSON serialization round trip is
+unit tested. This does not certify the running input-sharing pipeline or PR #494.
+
+Remaining: protocol/backend integration (including CoreGraphics vs GDK coordinate
+conversion), stable monitor identity, per-monitor exposed-edge validation, editable
+physical sizes and multi-point calibration UI, persistent always-visible markers,
+and Windows real-display tests. The draft's selected range alone does not change
+where the cursor currently switches computers.

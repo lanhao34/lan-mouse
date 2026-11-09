@@ -540,3 +540,20 @@ This checkout includes an experimental, platform-independent
 `input-event::edge_mapping` geometry API for mapping local edge intervals and
 alignment anchors to a shared 0–1 position. It is not yet connected to screen
 capture, configuration, or the UI. See [development status and design](docs/PERSONAL_KVM.md).
+
+
+### Local edge selection tool (development)
+
+Run `cargo +1.91.1 run -p lan-mouse-gtk --example edge-selector` to open the
+standalone range editor without contacting a daemon. On macOS,
+`./tools/build-edge-editor-macos.sh` builds `target/Edge Range Editor.app`.
+Choose a monitor and edge, then select **在真实屏幕边缘选择范围…**.
+A fullscreen editing surface appears on that actual monitor: click along the
+edge or drag its endpoint handles, confirm to keep the selection, or press
+Escape to discard it. The small preview is secondary.
+
+Export/import uses a validated local JSON draft. It does **not** update live
+Lan Mouse configuration yet. Monitor geometry is a GDK logical-coordinate
+snapshot, not a portable monitor identifier or a CoreGraphics coordinate
+contract. A changed layout requires reopening/reselecting the monitor.
+Runtime portal integration and Windows end-to-end verification remain pending.

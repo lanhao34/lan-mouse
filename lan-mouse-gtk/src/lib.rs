@@ -1,6 +1,7 @@
 mod authorization_window;
 mod client_object;
 mod client_row;
+pub mod edge_editor;
 mod fingerprint_window;
 mod key_object;
 mod key_row;
@@ -183,6 +184,14 @@ fn setup_actions(app: &adw::Application) {
         }
     });
     app.add_action(&quit_action);
+    let action = gio::SimpleAction::new("edge-editor", None);
+    let weak = app.downgrade();
+    action.connect_activate(move |_, _| {
+        if let Some(app) = weak.upgrade() {
+            edge_editor::show(&app);
+        }
+    });
+    app.add_action(&action);
 }
 
 // Set up a global menu
@@ -192,6 +201,7 @@ fn setup_menu(app: &adw::Application) {
     let menu = gio::Menu::new();
 
     let file_menu = gio::Menu::new();
+    file_menu.append(Some("Edge range editor…"), Some("app.edge-editor"));
     file_menu.append(Some("Quit"), Some("app.quit"));
     menu.append_submenu(Some("_File"), &file_menu);
 

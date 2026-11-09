@@ -15,5 +15,8 @@ log = "0.4.20"
 lan-mouse-ipc = { path = "../lan-mouse-ipc", version = "0.3.0" }
 thiserror = "2.0.0"
 
+input-event = { path = "../input-event", default-features = false }
+serde_json = "1.0"
+
 [build-dependencies]
 glib-build-tools = { version = "0.20.0" }
