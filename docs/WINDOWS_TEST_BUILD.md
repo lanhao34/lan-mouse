@@ -29,3 +29,26 @@ Automated validation covers Rust tests, native helper geometry tests, native hel
 window lifecycle smoke testing, and loading the packaged executable with --version.
 Actual two-computer key sharing and real mixed-DPI pointer interaction still require
 manual acceptance testing. Do not bypass Windows security warnings to run this build.
+
+## Build locally without GitHub Actions
+
+Use Windows 10/11 x64 with Git, the .NET SDK (8 or later with net8 Windows targeting),
+and MSYS2 installed from their official sources. No hosted runner or subscription
+is needed. From a clean checkout of `feature/personal-kvm`:
+
+```powershell
+.\tools\build-windows-local.ps1 -InstallBuildDependencies
+```
+
+`-InstallBuildDependencies` explicitly installs the UCRT64 compiler/GTK packages
+inside MSYS2. It does not add Windows services, startup items or firewall rules.
+The script runs native helper self-tests and a brief window smoke test, Rust tests
+and Clippy, release builds, portable packaging, a DLL-isolated version check, and
+SHA256 generation. Logs go in `target/manual-build-logs`; packages go in `dist`.
+The existing Lan Mouse installation and configuration are not replaced.
+
+With an already signed-in GitHub CLI, add `-Publish` to upload the verified package
+as a prerelease using the Release API, without Actions. Otherwise transfer the ZIP
+and matching SHA256 file to the Mac for upload; never transfer account tokens.
+If PowerShell blocks script execution, follow the machine's existing approval
+process; do not weaken the execution policy just to build this project.

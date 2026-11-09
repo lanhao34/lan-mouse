@@ -19,3 +19,6 @@ lan-mouse-gtk/native/windows/obj/
 
 # Python tooling bytecode
 tools/__pycache__/
+
+# Manual Windows package outputs
+/dist/

@@ -1,5 +1,6 @@
 """Package the UCRT64 build and recursively resolved runtime libraries."""
 import os
+from datetime import datetime
 from pathlib import Path
 import re
 import shutil
@@ -8,7 +9,11 @@ import subprocess
 root = Path.cwd()
 prefix = Path(os.environ['GTK_PREFIX']).resolve()
 dest = root / 'dist' / 'lan-mouse-windows-x64'
-dest.mkdir(parents=True, exist_ok=True)
+if dest.exists():
+    backup = root/'target/package-backups'/datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+    backup.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(dest), str(backup))
+dest.mkdir(parents=True, exist_ok=False)
 
 sources = [root/'target/release/lan-mouse.exe', root/'target/release/examples/edge-selector.exe', prefix/'bin/gdk-pixbuf-query-loaders.exe']
 for source, name in zip(sources, ['lan-mouse.exe', 'edge-settings-preview.exe', 'gdk-pixbuf-query-loaders.exe']):
