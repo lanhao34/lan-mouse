@@ -1,8 +1,10 @@
 fn main() {
-    let unix = cfg!(unix);
+    // Build scripts run on HOST; backend selection must follow Cargo's TARGET.
+    let unix = std::env::var("CARGO_CFG_TARGET_FAMILY")
+        .is_ok_and(|families| families.split(',').any(|family| family == "unix"));
     let libei = cfg!(feature = "libei");
     let x11 = cfg!(feature = "x11");
-    let macos = cfg!(target_os = "macos");
+    let macos = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos");
     let wlroots = cfg!(feature = "wlroots");
     let rdp = cfg!(feature = "remote_desktop_portal");
 

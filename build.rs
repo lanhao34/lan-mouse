@@ -6,8 +6,10 @@ fn main() {
         .build()
         .expect("shadow build");
 
-    let unix = cfg!(unix);
-    let macos = cfg!(target_os = "macos");
+    // Build scripts run on HOST; backend selection must follow Cargo's TARGET.
+    let unix = std::env::var("CARGO_CFG_TARGET_FAMILY")
+        .is_ok_and(|families| families.split(',').any(|family| family == "unix"));
+    let macos = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos");
 
     let layer_shell_capture = cfg!(feature = "layer_shell_capture");
     let libei_capture = cfg!(feature = "libei_capture");
