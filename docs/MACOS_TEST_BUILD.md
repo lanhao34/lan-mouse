@@ -16,8 +16,9 @@ Client -> 切换范围 -> 设置 opens the native range selector. Range settings
 still local drafts: they do not change the live crossing boundary or landing point.
 
 The package records its source commit and minimum macOS version in BUILD_INFO.txt.
-The minimum is derived from bundled Mach-O files; the current Homebrew GTK build
-requires macOS 26+. This package is Apple Silicon only when built on an ARM Mac.
+The minimum is derived from all bundled Mach-O files, including transitive GTK
+dependencies and the Swift helper. The current package requires macOS 27.2+;
+checking GTK alone is insufficient. This package is Apple Silicon only when built on an ARM Mac.
 Rust tests, Clippy, the settings switch preview, native overlay self-tests, bundle
 signatures and --version are checked. Two-computer keyboard sharing still needs
 acceptance testing on Windows and macOS. Follow normal OS approval flows for
