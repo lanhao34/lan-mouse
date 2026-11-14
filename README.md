@@ -425,7 +425,40 @@ port = 4242
 
 Where `left` can be either `left`, `right`, `top` or `bottom`.
 
-### Remapping keys for other operating systems
+### Automatic Alt / Super swap between Windows and macOS
+
+In **General**, enable **跨 Windows / macOS 自动交换 Alt 与 Super** on each
+device that should translate incoming keys. Enable it on both computers for
+bidirectional behavior. The switch saves immediately and defaults to off.
+The equivalent root-level `config.toml` setting (before any `[table]`) is:
+
+```toml
+auto_swap_alt_super = true
+```
+
+Both peers must run this fork's platform-aware build. The authenticated connection
+announces the sender's operating system; hostnames and IP addresses do not select
+the mapping. A Windows receiver swaps Alt / Windows when receiving from macOS;
+a macOS receiver swaps Option / Command when receiving from Windows. Left and
+right modifiers are handled separately. Local input, same-platform input, Linux,
+unknown/older peers, Control and ordinary keys are unchanged.
+
+The receiver applies this policy once, immediately before input emulation. Changes
+wait until held keys/modifiers are released, so a key-down and its key-up use the
+same mapping. Disconnects release emulated keys. General also shows the detected
+incoming peer platforms. Platform announcements are repeated to recover loss;
+until identification arrives, input passes through unchanged.
+
+If a sender advertises any custom `remap_keys`, automatic swapping is skipped for
+that sender to avoid applying two mappings. Remove those legacy entries when
+using this option. Also disable any separate modifier-swap helper; external
+remappers cannot be detected by Lan Mouse. This feature swaps Alt and Super,
+not Command and Control.
+
+For an offline UI preview without changing the running service:
+`cargo run -p lan-mouse-gtk --example keyboard-settings`.
+
+### Manual outgoing key remapping (advanced)
 
 `[input_pre_processing]` rewrites events on their way to other devices.
 `remap_keys` swaps individual keys, which is mostly useful for reconciling

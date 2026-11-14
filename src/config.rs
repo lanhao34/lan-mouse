@@ -48,6 +48,17 @@ mod remap_tests {
     use super::*;
 
     #[test]
+    fn automatic_swap_defaults_off_and_round_trips() {
+        let empty: ConfigToml = toml::from_str("").unwrap();
+        assert!(!empty.auto_swap_alt_super);
+        let enabled: ConfigToml = toml::from_str("auto_swap_alt_super = true").unwrap();
+        assert!(enabled.auto_swap_alt_super);
+        assert_eq!(
+            toml::from_str::<ConfigToml>(&toml::to_string(&enabled).unwrap()).unwrap(),
+            enabled
+        );
+    }
+    #[test]
     fn parses_and_preserves_left_alt_super_swap() {
         let text = r#"
 [[clients]]
@@ -100,6 +111,8 @@ fn default_path() -> Result<PathBuf, VarError> {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 struct ConfigToml {
+    #[serde(default)]
+    auto_swap_alt_super: bool,
     capture_backend: Option<CaptureBackend>,
     emulation_backend: Option<EmulationBackend>,
     port: Option<u16>,
@@ -553,7 +566,18 @@ impl Config {
             .unwrap_or(Vec::from_iter(DEFAULT_RELEASE_KEYS.iter().cloned()))
     }
 
-    /// keys rewritten on their way to other devices
+    /// Automatically swap modifiers received from the opposite desktop platform.
+    pub fn auto_swap_alt_super(&self) -> bool {
+        self.config_toml
+            .as_ref()
+            .is_some_and(|c| c.auto_swap_alt_super)
+    }
+    pub fn set_auto_swap_alt_super(&mut self, value: bool) {
+        self.config_toml
+            .get_or_insert_with(Default::default)
+            .auto_swap_alt_super = value;
+    }
+    /// Keys rewritten on their way to other devices.
     pub fn remap_keys(&self) -> HashMap<scancode::Linux, scancode::Linux> {
         self.config_toml
             .as_ref()

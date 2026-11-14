@@ -69,6 +69,7 @@ pub struct Service {
     /// map from capture handle to connection info
     incoming_conn_info: HashMap<ClientHandle, Incoming>,
     next_trigger_handle: u64,
+    peer_platforms: HashMap<SocketAddr, (String, bool)>,
 }
 
 #[derive(Debug)]
@@ -111,7 +112,7 @@ impl Service {
             ),
         );
         let emulation_backend = config.emulation_backend().map(|b| b.into());
-        let emulation = Emulation::new(emulation_backend, listener);
+        let emulation = Emulation::new(emulation_backend, listener, config.auto_swap_alt_super());
 
         // create dns resolver
         let resolver = DnsResolver::new()?;
@@ -134,6 +135,7 @@ impl Service {
             incoming_conn_info: Default::default(),
             incoming_conns: Default::default(),
             next_trigger_handle: 0,
+            peer_platforms: HashMap::new(),
         };
         Ok(service)
     }
@@ -228,6 +230,20 @@ impl Service {
             FrontendRequest::UpdateLeaveHook(handle, leave_hook) => {
                 self.update_leave_hook(handle, leave_hook)
             }
+            FrontendRequest::SetAutoModifierSwap(value) => {
+                let previous = self.config.auto_swap_alt_super();
+                self.config.set_auto_swap_alt_super(value);
+                if let Err(e) = self.config.write_back() {
+                    self.config.set_auto_swap_alt_super(previous);
+                    self.notify_frontend(FrontendEvent::Error(format!(
+                        "无法保存自动按键映射：{e}"
+                    )));
+                    self.notify_frontend(FrontendEvent::AutoModifierSwap(previous));
+                } else {
+                    self.emulation.set_auto_swap(value);
+                    self.notify_frontend(FrontendEvent::AutoModifierSwap(value));
+                }
+            }
             FrontendRequest::SaveConfiguration => self.save_config(),
         }
     }
@@ -268,6 +284,11 @@ impl Service {
             }
             self.notify_frontend(FrontendEvent::Created(handle, c, s));
         }
+        self.emulation
+            .set_auto_swap(self.config.auto_swap_alt_super());
+        self.notify_frontend(FrontendEvent::AutoModifierSwap(
+            self.config.auto_swap_alt_super(),
+        ));
         let release_bind = self.config.release_bind();
         self.capture.set_release_bind(release_bind);
         self.capture
@@ -292,6 +313,19 @@ impl Service {
 
     fn handle_emulation_event(&mut self, event: EmulationEvent) {
         match event {
+            EmulationEvent::PeerPlatform {
+                addr,
+                platform,
+                outgoing_remap,
+            } => {
+                self.peer_platforms
+                    .insert(addr, (platform.clone(), outgoing_remap));
+                self.notify_frontend(FrontendEvent::PeerPlatform {
+                    addr,
+                    platform,
+                    outgoing_remap,
+                });
+            }
             EmulationEvent::ConnectionAttempt { fingerprint } => {
                 self.notify_frontend(FrontendEvent::ConnectionAttempt { fingerprint });
             }
@@ -313,9 +347,9 @@ impl Service {
                 }
             }
             EmulationEvent::Disconnected { addr } => {
-                if let Some(addr) = self.remove_incoming(addr) {
-                    self.notify_frontend(FrontendEvent::IncomingDisconnected(addr));
-                }
+                self.peer_platforms.remove(&addr);
+                self.remove_incoming(addr);
+                self.notify_frontend(FrontendEvent::IncomingDisconnected(addr));
             }
             EmulationEvent::PortChanged(port) => match port {
                 Ok(port) => {
@@ -335,6 +369,13 @@ impl Service {
             }
             EmulationEvent::ReleaseNotify => self.capture.release(),
             EmulationEvent::Connected { addr, fingerprint } => {
+                let platform = lan_mouse_proto::PeerPlatform::Unknown.label().to_owned();
+                self.peer_platforms.insert(addr, (platform.clone(), false));
+                self.notify_frontend(FrontendEvent::PeerPlatform {
+                    addr,
+                    platform,
+                    outgoing_remap: false,
+                });
                 self.notify_frontend(FrontendEvent::DeviceConnected { addr, fingerprint });
             }
             EmulationEvent::PeerHello { addr, commit } => {
@@ -407,6 +448,16 @@ impl Service {
     fn sync_frontend(&mut self) {
         self.enumerate();
         self.notify_frontend(FrontendEvent::EmulationStatus(self.emulation_status));
+        self.notify_frontend(FrontendEvent::AutoModifierSwap(
+            self.config.auto_swap_alt_super(),
+        ));
+        for (addr, (platform, outgoing_remap)) in self.peer_platforms.clone() {
+            self.notify_frontend(FrontendEvent::PeerPlatform {
+                addr,
+                platform,
+                outgoing_remap,
+            });
+        }
         self.notify_frontend(FrontendEvent::CaptureStatus(self.capture_status));
         self.notify_frontend(FrontendEvent::PortChanged(self.port, None));
         self.notify_frontend(FrontendEvent::PublicKeyFingerprint(

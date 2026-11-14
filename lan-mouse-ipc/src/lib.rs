@@ -189,6 +189,12 @@ pub struct ClientState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FrontendEvent {
+    AutoModifierSwap(bool),
+    PeerPlatform {
+        addr: SocketAddr,
+        platform: String,
+        outgoing_remap: bool,
+    },
     /// a client was created
     Created(ClientHandle, ClientConfig, ClientState),
     /// no such client
@@ -225,11 +231,14 @@ pub enum FrontendEvent {
     /// incoming disconnected
     IncomingDisconnected(SocketAddr),
     /// failed connection attempt (approval for fingerprint required)
-    ConnectionAttempt { fingerprint: String },
+    ConnectionAttempt {
+        fingerprint: String,
+    },
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub enum FrontendRequest {
+    SetAutoModifierSwap(bool),
     /// activate/deactivate client
     Activate(ClientHandle, bool),
     /// add a new client

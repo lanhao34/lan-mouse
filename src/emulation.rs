@@ -1,5 +1,6 @@
 use crate::config::local_commit;
 use crate::listen::{LanMouseListener, ListenEvent, ListenerCreationError};
+use crate::platform_swap::{PeerSwap, current_platform};
 use futures::StreamExt;
 use input_emulation::{EmulationHandle, InputEmulation, InputEmulationError};
 use input_event::Event;
@@ -25,6 +26,11 @@ pub(crate) struct Emulation {
 }
 
 pub(crate) enum EmulationEvent {
+    PeerPlatform {
+        addr: SocketAddr,
+        platform: String,
+        outgoing_remap: bool,
+    },
     Connected {
         addr: SocketAddr,
         fingerprint: String,
@@ -67,6 +73,7 @@ pub(crate) enum EmulationEvent {
 }
 
 enum EmulationRequest {
+    AutoSwap(bool),
     Reenable,
     Release(SocketAddr),
     ChangePort(u16),
@@ -77,11 +84,14 @@ impl Emulation {
     pub(crate) fn new(
         backend: Option<input_emulation::Backend>,
         listener: LanMouseListener,
+        auto_swap: bool,
     ) -> Self {
         let emulation_proxy = EmulationProxy::new(backend);
         let (request_tx, request_rx) = channel();
         let (event_tx, event_rx) = channel();
         let emulation_task = ListenTask {
+            auto_swap,
+            peers: HashMap::new(),
             listener,
             emulation_proxy,
             request_rx,
@@ -98,6 +108,12 @@ impl Emulation {
     pub(crate) fn send_leave_event(&self, addr: SocketAddr) {
         self.request_tx
             .send(EmulationRequest::Release(addr))
+            .expect("channel closed");
+    }
+
+    pub(crate) fn set_auto_swap(&self, value: bool) {
+        self.request_tx
+            .send(EmulationRequest::AutoSwap(value))
             .expect("channel closed");
     }
 
@@ -130,6 +146,8 @@ impl Emulation {
 }
 
 struct ListenTask {
+    auto_swap: bool,
+    peers: HashMap<SocketAddr, PeerSwap>,
     listener: LanMouseListener,
     emulation_proxy: EmulationProxy,
     request_rx: Receiver<EmulationRequest>,
@@ -157,10 +175,26 @@ impl ListenTask {
                                 }
                             }
                             ProtoEvent::Leave(_) => {
+                                if let Some(peer) = self.peers.get_mut(&addr) {
+                                    peer.release();
+                                }
                                 self.emulation_proxy.remove(addr);
                                 self.listener.reply(addr, ProtoEvent::Ack(0)).await;
                             }
-                            ProtoEvent::Input(event) => self.emulation_proxy.consume(event, addr),
+                            ProtoEvent::Platform { platform, outgoing_remap } => {
+                                if self.peers.entry(addr).or_default().metadata(platform, outgoing_remap) {
+                                    self.event_tx.send(EmulationEvent::PeerPlatform {
+                                        addr,
+                                        platform: platform.label().to_owned(),
+                                        outgoing_remap,
+                                    }).expect("channel closed");
+                                }
+                            },
+                            ProtoEvent::Input(event) => {
+                                let event = self.peers.entry(addr).or_default()
+                                    .apply(event, self.auto_swap, current_platform());
+                                self.emulation_proxy.consume(event, addr);
+                            },
                             ProtoEvent::Ping => self.listener.reply(addr, ProtoEvent::Pong(self.emulation_proxy.emulation_active.get())).await,
                             // Peer's version handshake. Echo our own
                             // commit back so the peer's connect-side
@@ -181,6 +215,8 @@ impl ListenTask {
                         }
                     }
                     Some(ListenEvent::Accept { addr, fingerprint }) => {
+                        self.emulation_proxy.remove(addr);
+                        self.peers.insert(addr, PeerSwap::default());
                         self.event_tx.send(EmulationEvent::Connected { addr, fingerprint }).expect("channel closed");
                     }
                     Some(ListenEvent::Rejected { fingerprint }) => {
@@ -195,6 +231,7 @@ impl ListenTask {
                     self.event_tx.send(event).expect("channel closed");
                 }
                 request = self.request_rx.recv() => match request.expect("channel closed") {
+                    EmulationRequest::AutoSwap(value) => self.auto_swap = value,
                     // reenable emulation
                     EmulationRequest::Reenable => self.emulation_proxy.reenable(),
                     // notify the other end that we hit a barrier (should release capture)
@@ -211,6 +248,7 @@ impl ListenTask {
                         if instant.elapsed() > Duration::from_secs(1) {
                             log::warn!("releasing keys: {addr} not responding!");
                             self.emulation_proxy.remove(addr);
+                            self.peers.remove(&addr);
                             self.event_tx.send(EmulationEvent::Disconnected { addr }).expect("channel closed");
                             false
                         } else {

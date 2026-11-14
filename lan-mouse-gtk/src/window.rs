@@ -41,6 +41,54 @@ glib::wrapper! {
 }
 
 impl Window {
+    pub(super) fn request_auto_swap(&self, value: bool) {
+        if self.imp().frontend_request_writer.borrow().is_none() {
+            self.show_toast("界面预览：不会更改正在运行的服务。");
+            return;
+        }
+        self.request(FrontendRequest::SetAutoModifierSwap(value));
+    }
+    pub(crate) fn set_auto_swap(&self, value: bool) {
+        let imp = self.imp();
+        imp.syncing_auto_swap.set(true);
+        imp.auto_swap_switch.set_active(value);
+        imp.auto_swap_switch.set_sensitive(true);
+        imp.syncing_auto_swap.set(false);
+    }
+    pub(crate) fn peer_platform(
+        &self,
+        addr: std::net::SocketAddr,
+        platform: Option<(String, bool)>,
+    ) {
+        let mut peers = self.imp().peer_platforms.borrow_mut();
+        if let Some(p) = platform {
+            peers.insert(addr, p);
+        } else {
+            peers.remove(&addr);
+        }
+        let mut labels: Vec<_> = peers
+            .iter()
+            .map(|(addr, (p, manual))| {
+                format!(
+                    "{addr} · {p}{}",
+                    if *manual {
+                        "（对端有自定义发送映射，跳过自动交换）"
+                    } else {
+                        ""
+                    }
+                )
+            })
+            .collect();
+        labels.sort();
+        self.imp()
+            .auto_swap_peer_status
+            .set_subtitle(&if labels.is_empty() {
+                "等待平台识别；旧版或未知平台不会自动交换。请关闭额外改键工具。".into()
+            } else {
+                labels.join("\n")
+            });
+    }
+
     pub(super) fn new(app: &adw::Application, conn: FrontendRequestWriter) -> Self {
         let window: Self = Object::builder().property("application", app).build();
         window
@@ -442,7 +490,10 @@ impl Window {
 
     fn request(&self, request: FrontendRequest) {
         let mut requester = self.imp().frontend_request_writer.borrow_mut();
-        let requester = requester.as_mut().unwrap();
+        let Some(requester) = requester.as_mut() else {
+            self.show_toast("界面预览：不会更改正在运行的服务。");
+            return;
+        };
         if let Err(e) = requester.request(request) {
             log::error!("error sending message: {e}");
         };

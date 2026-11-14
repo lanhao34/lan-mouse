@@ -5,7 +5,14 @@ Extract the entire ZIP into a new directory. Keep the DLLs, share directory and
 native-edge-overlay directory together. Do not copy only lan-mouse.exe.
 
 - `Launch.cmd preview`: offline client-settings preview; does not connect to the running daemon.
-- `Launch.cmd`: full Lan Mouse application with outgoing key remapping and the new range settings page.
+- `Launch.cmd`: full Lan Mouse application with automatic cross-platform modifier swapping and the new range settings page.
+- Under General, enable **跨 Windows / macOS 自动交换 Alt 与 Super** on both
+  updated computers for bidirectional swapping. It is off by default and saves
+  immediately. Only incoming Windows/macOS traffic is swapped; local input and
+  same-platform traffic remain unchanged. The remote platform appears below it.
+- Remove legacy `input_pre_processing.remap_keys` entries when using automatic
+  swapping. A peer with custom outgoing remapping is excluded to avoid double
+  translation. Old peers without platform announcements are also excluded.
 - Expand a client -> 切换范围 -> 设置 -> 在屏幕上调整.
 - Windows uses native small topmost windows: a click-through line, two handles,
   and a small confirm/cancel panel. There is no fullscreen desktop-sized window.
@@ -25,10 +32,14 @@ Launch.cmd sets portable GTK paths and regenerates image-loader metadata locally
 The source revision is in SOURCE_COMMIT.txt; runtime package versions are recorded
 in RUNTIME_PACKAGES.txt. Source is available at https://github.com/lanhao34/lan-mouse.
 
-Automated validation covers Rust tests, native helper geometry tests, native helper
+The native Windows build workflow covers Rust tests, native helper geometry tests, native helper
 window lifecycle smoke testing, and loading the packaged executable with --version.
 Actual two-computer key sharing and real mixed-DPI pointer interaction still require
 manual acceptance testing. Do not bypass Windows security warnings to run this build.
+
+Docker cross-build packages have **not** passed Windows execution tests. Check
+`CROSS_BUILD_STATUS.txt` and `windows-libraries.json` in those packages for their
+validation limits and runtime dependency manifest.
 
 ## Build locally without GitHub Actions
 

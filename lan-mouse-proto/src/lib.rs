@@ -45,6 +45,42 @@ impl Display for Position {
     }
 }
 
+/// Peer-reported OS; unknown values are intentionally not guessed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PeerPlatform {
+    #[default]
+    Unknown,
+    Windows,
+    MacOs,
+    Linux,
+}
+impl PeerPlatform {
+    pub fn code(self) -> u8 {
+        match self {
+            Self::Unknown => 0,
+            Self::Windows => 1,
+            Self::MacOs => 2,
+            Self::Linux => 3,
+        }
+    }
+    pub fn from_code(code: u8) -> Self {
+        match code {
+            1 => Self::Windows,
+            2 => Self::MacOs,
+            3 => Self::Linux,
+            _ => Self::Unknown,
+        }
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Unknown => "未知平台",
+            Self::Windows => "Windows",
+            Self::MacOs => "macOS",
+            Self::Linux => "Linux",
+        }
+    }
+}
+
 /// main lan-mouse protocol event type
 #[derive(Clone, Copy, Debug)]
 pub enum ProtoEvent {
@@ -72,6 +108,10 @@ pub enum ProtoEvent {
     /// recognize the event type silently skip it per the
     /// forward-compat handling in the receive loop.
     Hello { commit: [u8; 8] },
+    Platform {
+        platform: PeerPlatform,
+        outgoing_remap: bool,
+    },
 }
 
 impl Display for ProtoEvent {
@@ -89,6 +129,14 @@ impl Display for ProtoEvent {
                     if *alive { "alive" } else { "not available" }
                 )
             }
+            ProtoEvent::Platform {
+                platform,
+                outgoing_remap,
+            } => write!(
+                f,
+                "Platform({}, outgoing_remap={outgoing_remap})",
+                platform.label()
+            ),
             ProtoEvent::Hello { commit } => {
                 let s = std::str::from_utf8(commit).unwrap_or("????????");
                 write!(f, "Hello({s})")
@@ -112,6 +160,8 @@ pub enum EventType {
     Leave,
     Ack,
     Hello,
+    // IDs 12/13 are reserved for the positioned-transition branch.
+    Platform = 32,
 }
 
 impl ProtoEvent {
@@ -135,6 +185,7 @@ impl ProtoEvent {
             ProtoEvent::Leave(_) => EventType::Leave,
             ProtoEvent::Ack(_) => EventType::Ack,
             ProtoEvent::Hello { .. } => EventType::Hello,
+            ProtoEvent::Platform { .. } => EventType::Platform,
         }
     }
 }
@@ -189,6 +240,10 @@ impl TryFrom<[u8; MAX_EVENT_SIZE]> for ProtoEvent {
             EventType::Enter => Ok(Self::Enter(decode_u8(&mut buf)?.try_into()?)),
             EventType::Leave => Ok(Self::Leave(decode_u32(&mut buf)?)),
             EventType::Ack => Ok(Self::Ack(decode_u32(&mut buf)?)),
+            EventType::Platform => Ok(Self::Platform {
+                platform: PeerPlatform::from_code(decode_u8(&mut buf)?),
+                outgoing_remap: decode_u8(&mut buf)? != 0,
+            }),
             EventType::Hello => {
                 let mut commit = [0u8; 8];
                 for b in commit.iter_mut() {
@@ -260,6 +315,13 @@ impl From<ProtoEvent> for ([u8; MAX_EVENT_SIZE], usize) {
                 ProtoEvent::Enter(pos) => encode_u8(buf, len, pos as u8),
                 ProtoEvent::Leave(serial) => encode_u32(buf, len, serial),
                 ProtoEvent::Ack(serial) => encode_u32(buf, len, serial),
+                ProtoEvent::Platform {
+                    platform,
+                    outgoing_remap,
+                } => {
+                    encode_u8(buf, len, platform.code());
+                    encode_u8(buf, len, outgoing_remap as u8);
+                }
                 ProtoEvent::Hello { commit } => {
                     for b in commit.iter() {
                         encode_u8(buf, len, *b);
@@ -307,3 +369,42 @@ encode_impl!(u8);
 encode_impl!(u32);
 encode_impl!(i32);
 encode_impl!(f64);
+
+#[cfg(test)]
+mod platform_tests {
+    use super::*;
+    #[test]
+    fn platform_extension_keeps_old_ids() {
+        assert_eq!(EventType::Hello as u8, 11);
+        assert_eq!(EventType::Platform as u8, 32);
+        for p in [
+            PeerPlatform::Unknown,
+            PeerPlatform::Windows,
+            PeerPlatform::MacOs,
+            PeerPlatform::Linux,
+        ] {
+            let (b, n) = ProtoEvent::Platform {
+                platform: p,
+                outgoing_remap: true,
+            }
+            .into();
+            assert_eq!(n, 3);
+            assert!(
+                matches!(ProtoEvent::try_from(b).unwrap(),ProtoEvent::Platform{platform,outgoing_remap:true} if platform==p)
+            );
+        }
+    }
+    #[test]
+    fn future_os_is_unknown() {
+        let mut b = [0; MAX_EVENT_SIZE];
+        b[0] = 32;
+        b[1] = 255;
+        assert!(matches!(
+            ProtoEvent::try_from(b).unwrap(),
+            ProtoEvent::Platform {
+                platform: PeerPlatform::Unknown,
+                ..
+            }
+        ));
+    }
+}

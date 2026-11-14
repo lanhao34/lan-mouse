@@ -14,6 +14,12 @@ use crate::authorization_window::AuthorizationWindow;
 #[template(resource = "/de/feschber/LanMouse/window.ui")]
 pub struct Window {
     #[template_child]
+    pub auto_swap_switch: TemplateChild<gtk::Switch>,
+    #[template_child]
+    pub auto_swap_peer_status: TemplateChild<ActionRow>,
+    pub syncing_auto_swap: Cell<bool>,
+    pub peer_platforms: RefCell<std::collections::HashMap<std::net::SocketAddr, (String, bool)>>,
+    #[template_child]
     pub authorized_placeholder: TemplateChild<ActionRow>,
     #[template_child]
     pub fingerprint_row: TemplateChild<ActionRow>,
@@ -203,6 +209,15 @@ impl ObjectImpl for Window {
                 .set_text(hostname.to_str().expect("hostname: invalid utf8"));
         }
         self.parent_constructed();
+        self.auto_swap_switch.connect_active_notify(clone!(
+            #[weak(rename_to = row)]
+            self,
+            move |switch| {
+                if !row.syncing_auto_swap.get() {
+                    row.obj().request_auto_swap(switch.is_active());
+                }
+            }
+        ));
         self.set_port(DEFAULT_PORT);
         let obj = self.obj();
         obj.setup_icon();

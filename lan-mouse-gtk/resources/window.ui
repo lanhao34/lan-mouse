@@ -106,6 +106,23 @@
                     <child>
                       <object class="AdwPreferencesGroup">
                         <property name="title" translatable="yes">General</property>
+                        <child>
+                          <object class="AdwActionRow" id="auto_swap_row">
+                            <property name="title" translatable="yes">跨 Windows / macOS 自动交换 Alt 与 Super</property>
+                            <property name="subtitle" translatable="yes">仅处理收到的跨平台输入；本机和同平台输入不变。两端都开启后双向生效。</property>
+                            <property name="activatable-widget">auto_swap_switch</property>
+                            <child type="suffix"><object class="GtkSwitch" id="auto_swap_switch">
+                              <property name="valign">center</property>
+                              <property name="sensitive">false</property>
+                            </object></child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwActionRow" id="auto_swap_peer_status">
+                            <property name="title" translatable="yes">远程平台</property>
+                            <property name="subtitle" translatable="yes">等待平台识别；旧版或未知平台不会自动交换。请关闭额外的改键工具，避免重复映射。</property>
+                          </object>
+                        </child>
                         <!--
                         <child>
                           <object class="AdwActionRow">

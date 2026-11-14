@@ -4,7 +4,7 @@ use lan_mouse_ipc::{ClientHandle, DEFAULT_PORT};
 use lan_mouse_proto::{MAX_EVENT_SIZE, ProtoEvent};
 use local_channel::mpsc::{Receiver, Sender, channel};
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{HashMap, HashSet},
     io,
     net::SocketAddr,
@@ -93,6 +93,7 @@ async fn connect_any(
 }
 
 pub(crate) struct LanMouseConnection {
+    outgoing_remapped: Rc<Cell<bool>>,
     cert: Certificate,
     client_manager: ClientManager,
     conns: Rc<Mutex<HashMap<SocketAddr, Arc<dyn Conn + Send + Sync>>>>,
@@ -106,6 +107,7 @@ impl LanMouseConnection {
     pub(crate) fn new(cert: Certificate, client_manager: ClientManager) -> Self {
         let (recv_tx, recv_rx) = channel();
         Self {
+            outgoing_remapped: Rc::new(Cell::new(false)),
             cert,
             client_manager,
             conns: Default::default(),
@@ -114,6 +116,10 @@ impl LanMouseConnection {
             recv_tx,
             ping_response: Default::default(),
         }
+    }
+
+    pub(crate) fn set_outgoing_remap(&self, value: bool) {
+        self.outgoing_remapped.set(value);
     }
 
     pub(crate) async fn recv(&mut self) -> (ClientHandle, ProtoEvent) {
@@ -136,6 +142,18 @@ impl LanMouseConnection {
                 if !self.client_manager.alive(handle) {
                     return Err(LanMouseConnectionError::TargetEmulationDisabled);
                 }
+                // Refresh before a capture starts, including after a manual remap
+                // change. The periodic announcement also recovers packet loss.
+                if matches!(event, ProtoEvent::Enter(_)) {
+                    let (identity, n) = ProtoEvent::Platform {
+                        platform: crate::platform_swap::current_platform(),
+                        outgoing_remap: self.outgoing_remapped.get(),
+                    }
+                    .into();
+                    if let Err(e) = conn.send(&identity[..n]).await {
+                        log::debug!("platform announcement to {addr} failed: {e}");
+                    }
+                }
                 match conn.send(buf).await {
                     Ok(_) => {}
                     Err(e) => {
@@ -153,21 +171,22 @@ impl LanMouseConnection {
         if !connecting.contains(&handle) {
             connecting.insert(handle);
             // connect in the background
-            spawn_local(connect_to_handle(
-                self.client_manager.clone(),
-                self.cert.clone(),
+            spawn_local(connect_to_handle(ConnectTask {
+                client_manager: self.client_manager.clone(),
+                cert: self.cert.clone(),
                 handle,
-                self.conns.clone(),
-                self.connecting.clone(),
-                self.recv_tx.clone(),
-                self.ping_response.clone(),
-            ));
+                conns: self.conns.clone(),
+                connecting: self.connecting.clone(),
+                tx: self.recv_tx.clone(),
+                ping_response: self.ping_response.clone(),
+                outgoing_remapped: self.outgoing_remapped.clone(),
+            }));
         }
         Err(LanMouseConnectionError::NotConnected)
     }
 }
 
-async fn connect_to_handle(
+struct ConnectTask {
     client_manager: ClientManager,
     cert: Certificate,
     handle: ClientHandle,
@@ -175,7 +194,20 @@ async fn connect_to_handle(
     connecting: Rc<Mutex<HashSet<ClientHandle>>>,
     tx: Sender<(ClientHandle, ProtoEvent)>,
     ping_response: Rc<RefCell<HashSet<SocketAddr>>>,
-) -> Result<(), LanMouseConnectionError> {
+    outgoing_remapped: Rc<Cell<bool>>,
+}
+
+async fn connect_to_handle(task: ConnectTask) -> Result<(), LanMouseConnectionError> {
+    let ConnectTask {
+        client_manager,
+        cert,
+        handle,
+        conns,
+        connecting,
+        tx,
+        ping_response,
+        outgoing_remapped,
+    } = task;
     log::info!("client {handle} connecting ...");
     // sending did not work, figure out active conn.
     if let Some(addrs) = client_manager.get_ips(handle) {
@@ -194,6 +226,14 @@ async fn connect_to_handle(
             }
         };
         log::info!("client ({handle}) connected @ {addr}");
+        let (identity, n) = ProtoEvent::Platform {
+            platform: crate::platform_swap::current_platform(),
+            outgoing_remap: outgoing_remapped.get(),
+        }
+        .into();
+        if let Err(e) = conn.send(&identity[..n]).await {
+            log::debug!("platform announcement to {addr} failed: {e}");
+        }
         client_manager.set_active_addr(handle, Some(addr));
         conns.lock().await.insert(addr, conn.clone());
         connecting.lock().await.remove(&handle);
@@ -212,7 +252,12 @@ async fn connect_to_handle(
         }
 
         // poll connection for active
-        spawn_local(ping_pong(addr, conn.clone(), ping_response.clone()));
+        spawn_local(ping_pong(
+            addr,
+            conn.clone(),
+            ping_response.clone(),
+            outgoing_remapped,
+        ));
 
         // receiver
         spawn_local(receive_loop(
@@ -234,8 +279,18 @@ async fn ping_pong(
     addr: SocketAddr,
     conn: Arc<dyn Conn + Send + Sync>,
     ping_response: Rc<RefCell<HashSet<SocketAddr>>>,
+    outgoing_remapped: Rc<Cell<bool>>,
 ) {
     loop {
+        let (identity, n) = ProtoEvent::Platform {
+            platform: crate::platform_swap::current_platform(),
+            outgoing_remap: outgoing_remapped.get(),
+        }
+        .into();
+        if conn.send(&identity[..n]).await.is_err() {
+            return;
+        }
+
         let (buf, len) = ProtoEvent::Ping.into();
 
         // send 4 pings, at least one must be answered

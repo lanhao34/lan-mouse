@@ -84,6 +84,7 @@ impl Capture {
         remap: KeyRemap,
         scroll_invert: ScrollInvert,
     ) -> Self {
+        conn.set_outgoing_remap(!remap.is_empty());
         let (request_tx, request_rx) = channel();
         let (event_tx, event_rx) = channel();
         let cancellation_token = CancellationToken::new();
@@ -243,7 +244,10 @@ impl CaptureTask {
                         CaptureRequest::SetReleaseBind(bind) => {
                             self.release_bind.borrow_mut().clone_from(&bind);
                         }
-                        CaptureRequest::SetRemap(remap) => self.remap = remap,
+                        CaptureRequest::SetRemap(remap) => {
+                            self.conn.set_outgoing_remap(!remap.is_empty());
+                            self.remap = remap;
+                        },
                         CaptureRequest::SetScrollInvert(scroll_invert) => {
                             self.scroll_invert = scroll_invert
                         }
@@ -355,6 +359,7 @@ impl CaptureTask {
                         // otherwise a held key's up event targets a different
                         // key than its down event after a config reload.
                         self.release_capture(capture).await?;
+                        self.conn.set_outgoing_remap(!remap.is_empty());
                         self.remap = remap;
                     },
                     CaptureRequest::SetScrollInvert(scroll_invert) => {

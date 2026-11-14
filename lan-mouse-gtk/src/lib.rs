@@ -293,6 +293,12 @@ fn build_ui(app: &Application) {
             loop {
                 let notify = receiver.recv().await.unwrap_or_else(|_| process::exit(1));
                 match notify {
+                    FrontendEvent::AutoModifierSwap(value) => window.set_auto_swap(value),
+                    FrontendEvent::PeerPlatform {
+                        addr,
+                        platform,
+                        outgoing_remap,
+                    } => window.peer_platform(addr, Some((platform, outgoing_remap))),
                     FrontendEvent::Created(handle, client, state) => {
                         window.new_client(handle, client, state)
                     }
@@ -326,6 +332,7 @@ fn build_ui(app: &Application) {
                         window.show_toast(format!("device entered: {addr} ({pos})").as_str());
                     }
                     FrontendEvent::IncomingDisconnected(addr) => {
+                        window.peer_platform(addr, None);
                         window.show_toast(format!("{addr} disconnected").as_str());
                     }
                 }
@@ -415,4 +422,21 @@ fn configure_windows_bundle_environment() {
     if cache.is_file() {
         std::env::set_var("GDK_PIXBUF_MODULE_FILE", cache);
     }
+}
+
+/// Offline preview of the real main-window template and automatic mapping switch.
+#[doc(hidden)]
+pub fn show_keyboard_settings_preview(app: &adw::Application) {
+    gio::resources_register_include!("lan-mouse.gresource").expect("resources");
+    load_css();
+    load_icons();
+    let window: Window = glib::Object::builder().property("application", app).build();
+    window.set_title(Some("Lan Mouse · 按键设置预览（不连接服务）"));
+    window.set_auto_swap(false);
+    window.peer_platform(
+        "127.0.0.1:4242".parse().unwrap(),
+        Some(("Windows（界面示例）".into(), false)),
+    );
+    window.present();
+    window.show_toast("独立界面预览，不连接真实 daemon。");
 }
